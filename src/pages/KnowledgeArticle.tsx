@@ -1,13 +1,51 @@
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, BookOpen, Calendar, Clock } from "lucide-react";
+import { ArrowLeft, BookOpen, Calendar, Clock, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/Markdown";
-import { findArticleBySlug } from "@/lib/knowledgeBase";
+import { findArticleBySlug, KnowledgeArticle as KnowledgeArticleType } from "@/lib/knowledgeBase";
+import { fetchKnowledgeArticleBySlug } from "@/lib/knowledgeSupabase";
 
 export default function KnowledgeArticle() {
   const { slug } = useParams();
-  const article = slug ? findArticleBySlug(slug) : undefined;
+  const [article, setArticle] = useState<KnowledgeArticleType | null | undefined>(undefined);
+
+  useEffect(() => {
+    let mounted = true;
+    const local = slug ? findArticleBySlug(slug) : null;
+    setArticle(undefined);
+
+    if (!slug) {
+      setArticle(null);
+      return;
+    }
+
+    fetchKnowledgeArticleBySlug(slug)
+      .then((remote) => {
+        if (!mounted) return;
+        setArticle(remote || local || null);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setArticle(local || null);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [slug]);
+
+  if (article === undefined) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="panel max-w-lg text-center space-y-4">
+          <Loader2 className="h-8 w-8 text-primary mx-auto animate-spin" />
+          <p className="text-sm text-muted-foreground">Carregando conteúdo da biblioteca...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!article) {
     return (
