@@ -1,16 +1,56 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, BookOpen, Clock, FileText, Search, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { knowledgeCategories, searchKnowledge } from "@/lib/knowledgeBase";
+import { KnowledgeArticle, knowledgeArticles } from "@/lib/knowledgeBase";
+import { fetchPublishedKnowledgeArticles, mergeRemoteWithStatic } from "@/lib/knowledgeSupabase";
+
+function filterArticles(articles: KnowledgeArticle[], query: string, category: string) {
+  const normalized = query.trim().toLowerCase();
+  return articles.filter((article) => {
+    const matchesCategory = category === "Todos" || article.category === category;
+    const haystack = [article.title, article.summary, article.category, article.tags.join(" "), article.content]
+      .join(" ")
+      .toLowerCase();
+    const matchesQuery = !normalized || haystack.includes(normalized);
+    return matchesCategory && matchesQuery;
+  });
+}
 
 export default function KnowledgeLibrary() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Todos");
+  const [source, setSource] = useState<"supabase" | "fallback" | "loading">("loading");
+  const [allArticles, setAllArticles] = useState<KnowledgeArticle[]>(knowledgeArticles);
 
-  const articles = useMemo(() => searchKnowledge(query, category), [query, category]);
+  useEffect(() => {
+    let mounted = true;
+    fetchPublishedKnowledgeArticles()
+      .then((remote) => {
+        if (!mounted) return;
+        const merged = mergeRemoteWithStatic(remote);
+        setAllArticles(merged.length ? merged : knowledgeArticles);
+        setSource(remote.length ? "supabase" : "fallback");
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setAllArticles(knowledgeArticles);
+        setSource("fallback");
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const categories = useMemo(
+    () => ["Todos", ...Array.from(new Set(allArticles.map((article) => article.category)))],
+    [allArticles]
+  );
+
+  const articles = useMemo(() => filterArticles(allArticles, query, category), [allArticles, query, category]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -22,8 +62,11 @@ export default function KnowledgeLibrary() {
             </Link>
           </Button>
           <div className="ml-auto flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link to="/admin/biblioteca">Admin</Link>
+            </Button>
             <Badge variant="outline" className="border-primary/40 text-primary">
-              Biblioteca viva
+              {source === "loading" ? "Carregando" : source === "supabase" ? "Supabase ativo" : "Fallback local"}
             </Badge>
           </div>
         </div>
@@ -72,7 +115,7 @@ export default function KnowledgeLibrary() {
             />
           </div>
           <div className="flex flex-wrap gap-2">
-            {knowledgeCategories.map((item) => (
+            {categories.map((item) => (
               <button
                 key={item}
                 type="button"
